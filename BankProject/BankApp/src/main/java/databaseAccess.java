@@ -3,7 +3,9 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.List;
 import java.util.TimeZone;
 
 public class databaseAccess {
@@ -50,7 +52,6 @@ public class databaseAccess {
             PreparedStatement lookup = conn.prepareStatement(userLookup);
         	lookup.setString(1, userName);
         	lookup.setString(2, password);
-        	lookup.executeQuery();
         	ResultSet rs = lookup.executeQuery();
         	if(rs.next())
         		return rs.getString("Employee");
@@ -118,8 +119,7 @@ public class databaseAccess {
 	    }
 	}
 	
-	public boolean deposit(int accountNumber, double amount) {
-		
+	public boolean deposit(int accountNumber, double amount) throws TransactionLogUnavailableException {
 		boolean result = false;
 	   	String balance =  "select \"Balance\" from \"Account\" where \"AccountId\" = ?;";
 	   	String deposit =  "update \"Account\" set \"Balance\" = ? where \"AccountId\" = ?;";
@@ -137,6 +137,19 @@ public class databaseAccess {
 	    	e.printStackTrace();
 	    	return false;
 	    }
+	    
+	    try{
+	        PreparedStatement doDeposit = conn.prepareStatement(deposit);
+	        doDeposit.setDouble(1, currentBalance + amount);
+	        doDeposit.setInt(2, accountNumber);
+	    	result  = doDeposit.executeUpdate() == 1;
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	return false;
+	    }
+
+	    if(!result)
+	    	return result;
 	    try{
 	        PreparedStatement trans = conn.prepareStatement(transaction);
 	        trans.setInt(1, accountNumber);
@@ -148,9 +161,171 @@ public class databaseAccess {
 	        result = trans.executeUpdate() == 1;
 	    } catch (SQLException e) {
 	    	e.printStackTrace();
-	    	return false;
+	    	throw new TransactionLogUnavailableException("Transaction log unavailable. Die Die Die...");
 	    }
 	    return result;
-
 	}
+
+	public boolean withdraw(int accountNumber, double amount) throws TransactionLogUnavailableException {
+		boolean result = false;
+	   	String balance =  "select \"Balance\" from \"Account\" where \"AccountId\" = ?;";
+	   	String withdraw =  "update \"Account\" set \"Balance\" = ? where \"AccountId\" = ?;";
+	   	String transaction = "insert into \"Transaction\" (\"AccountId\", \"TransactionType\", \"Amount\", \"TransactionTime\") " +
+	   			"values (?, ?::transactionKey, ?, ?) ";
+
+	   	double currentBalance = 0.0;
+	    try{
+	        PreparedStatement getBalance = conn.prepareStatement(balance);
+	        getBalance.setInt(1, accountNumber);
+	    	ResultSet rs = getBalance.executeQuery();
+	    	if(rs.next())
+	    		currentBalance = rs.getDouble("Balance");
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	return false;
+	    }
+	    
+	    if(currentBalance - amount < 0) {
+	    	System.out.println("Can't withdraw more than what's available.");
+	    	return false;
+	    }
+	    
+	    try{
+	        PreparedStatement doWithdraw = conn.prepareStatement(withdraw);
+	        doWithdraw.setDouble(1, currentBalance - amount);
+	        doWithdraw.setInt(2, accountNumber);
+	    	result  = doWithdraw.executeUpdate() == 1;
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	return false;
+	    }
+
+	    if(!result)
+	    	return result;
+	    try{
+	        PreparedStatement trans = conn.prepareStatement(transaction);
+	        trans.setInt(1, accountNumber);
+	        trans.setString(2, "DEBIT");
+	        trans.setDouble(3,  amount);
+
+	        trans.setTimestamp(4, new java.sql.Timestamp(new java.util.Date().getTime()));
+
+	        result = trans.executeUpdate() == 1;
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	throw new TransactionLogUnavailableException("Transaction log unavailable. Die Die Die...");
+	    }
+	    return result;
+	}
+	public boolean isEmployee(String userName) {
+    	String userLookup =  "select \"Employee\" from \"User\" where \"UserName\"=?";
+	    try{
+	        PreparedStatement lookup = conn.prepareStatement(userLookup);
+	    	lookup.setString(1, userName);
+	    	ResultSet rs = lookup.executeQuery();
+	    	if(rs.next())
+	    		return rs.getBoolean("Employee");
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    }
+	    return false;
+	}
+	@SuppressWarnings("null")
+	public List<Transaction> getAllTransactions() {
+    	String userLookup =  "select * from \"Transaction\"";
+    	List<Transaction> result = new ArrayList<Transaction>();
+	    try{
+	        PreparedStatement lookup = conn.prepareStatement(userLookup);
+	    	ResultSet rs = lookup.executeQuery();
+	    	while(rs.next()){
+	    		Transaction t = new Transaction();
+	    		t.tranasactionId = rs.getInt("TransactionId");
+	    		t.accountId = rs.getInt("AccountId");
+	    		t.tranasactionType = rs.getString("TransactionType");
+	    		t.amount = rs.getDouble("Amount");
+	    		t.targetAccount = rs.getInt("TargetAccount");
+	    		t.transactionTime = rs.getDate("TransactionTime");
+	    		result.add(t);
+	    	}
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+		    return result;
+	    }
+	    return result;
+	}
+	public boolean transfer(int accountNumber, int targetAccountNumber, double amount) throws TransactionLogUnavailableException {
+		boolean result = false;
+	   	String balance =  "select \"Balance\" from \"Account\" where \"AccountId\" = ?;";
+	   	String withdraw =  "update \"Account\" set \"Balance\" = ? where \"AccountId\" = ?;";
+	   	String transaction = "insert into \"Transaction\" (\"AccountId\", \"TransactionType\", \"Amount\", \"TargetAccount\", \"TransactionTime\") " +
+	   			"values (?, ?::transactionKey, ?, ?, ?) ";
+
+	   	double currentBalanceSource = 0.0;
+	   	double currentBalanceTarget = 0.0;
+	    try{
+	        PreparedStatement getBalance = conn.prepareStatement(balance);
+	        getBalance.setInt(1, accountNumber);
+	    	ResultSet rs = getBalance.executeQuery();
+	    	if(rs.next())
+	    		currentBalanceSource = rs.getDouble("Balance");
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	return false;
+	    }
+	    
+	    if(currentBalanceSource - amount < 0) {
+	    	System.out.println("Can't transfer more than what's available.");
+	    	return false;
+	    }
+	    
+	    try{
+	        PreparedStatement getBalance = conn.prepareStatement(balance);
+	        getBalance.setInt(1, targetAccountNumber);
+	    	ResultSet rs = getBalance.executeQuery();
+	    	if(rs.next())
+	    		currentBalanceTarget = rs.getDouble("Balance");
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	return false;
+	    }
+
+	    try{
+	        PreparedStatement doWithdraw = conn.prepareStatement(withdraw);
+	        doWithdraw.setDouble(1, currentBalanceSource - amount);
+	        doWithdraw.setInt(2, accountNumber);
+	    	result  = doWithdraw.executeUpdate() == 1;
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	return false;
+	    }
+
+	    try{
+	        PreparedStatement doDeposit = conn.prepareStatement(withdraw);
+	        doDeposit.setDouble(1, currentBalanceTarget + amount);
+	        doDeposit.setInt(2, targetAccountNumber);
+	    	result  = doDeposit.executeUpdate() == 1;
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	return false;
+	    }
+
+	    if(!result)
+	    	return result;
+	    try{
+	        PreparedStatement trans = conn.prepareStatement(transaction);
+	        trans.setInt(1, accountNumber);
+	        trans.setString(2, "TRANSFER");
+	        trans.setDouble(3,  amount);
+	        trans.setInt(4,  targetAccountNumber);
+
+	        trans.setTimestamp(5, new java.sql.Timestamp(new java.util.Date().getTime()));
+
+	        result = trans.executeUpdate() == 1;
+	    } catch (SQLException e) {
+	    	e.printStackTrace();
+	    	throw new TransactionLogUnavailableException("Transaction log unavailable. Die Die Die...");
+	    }
+	    return result;
+	}
+
 }

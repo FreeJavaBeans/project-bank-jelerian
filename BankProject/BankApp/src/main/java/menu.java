@@ -22,7 +22,8 @@ public class menu {
 	        System.out.println("6. Deposit");
 	        System.out.println("7. Withdraw");
 	        System.out.println("8. Transfer");
-	        System.out.println("9. Exit");
+	        System.out.println("9. List all transactions");
+	        System.out.println("10. Exit");
 	        System.out.print("Enter your choice: ");
 	        try {
 		        choice = scanner.nextInt();
@@ -83,13 +84,50 @@ public class menu {
 		                break;
 	                	
 	                case 7: 
+	                	if(username != null) {
+	                		transaction withdrawal = new transaction(scanner, username);
+	                		 success = withdrawal.withdraw();
+	                		 if(!success)
+	                			 System.out.println("Sorry. Unable to make the withdrawal, as requested");
+	                		 else
+	                			 System.out.println("Success.");
+	                	}
+	                	else
+	                		System.out.println("Please log in first.");
+	                		
 		                break;
 	                case 8: 
+	                	if(username != null) {
+	                		transaction transfer = new transaction(scanner, username);
+	                		 success = transfer.transfer();
+	                		 if(!success)
+	                			 System.out.println("Sorry. Unable to make the transfer, as requested");
+	                		 else
+	                			 System.out.println("Success.");
+	                	}
+	                	else
+	                		System.out.println("Please log in first.");
+	                		
 		                break;
-	                case 9: 
+		                
+	                case 9:
+	                	if(username != null) {
+	                		transaction listAll = new transaction(scanner, username);
+	                		 success = listAll.displayTranactions();
+	                		 if(!success)
+	                			 System.out.println("Sorry. Unable to display transactions, as requested");
+	                		 else
+	                			 System.out.println("Success.");
+	                	}
+	                	else
+	                		System.out.println("Please log in first.");
+	                		
+		                break;
+	                	
+	                case 10: 
 	                	System.out.println("Thanks for using Jay's bank");
 		                break;
-	     
+		                
 		            default:
 		                System.out.println("Invalid choice");
 		        }
@@ -99,7 +137,7 @@ public class menu {
 	        	System.out.println("Invalid input");
 	        	scanner.next();
 	        }
-		} while(choice != 9);
+		} while(choice != 10);
 		scanner.close();
 	}
 }
